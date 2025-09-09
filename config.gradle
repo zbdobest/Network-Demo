@@ -1,0 +1,11 @@
+// config.gradle
+ext {
+    androidConfig = [
+            applicationId    : "com.sgmw.test",
+            compileSdkVersion: 33,
+            minSdkVersion    : 28,
+            targetSdkVersion : 33,
+            versionCode      : 1,
+            versionName      : "1.0.0"
+    ]
+}

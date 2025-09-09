@@ -1,0 +1,57 @@
+plugins {
+    id "com.android.library"
+    id "org.jetbrains.kotlin.android"
+    id "kotlin-kapt"
+}
+
+
+android {
+    namespace 'com.example.http'
+    compileSdk 34
+
+    defaultConfig {
+        minSdk 24
+        targetSdk 34
+        versionCode 1
+        versionName "1.0"
+
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_11
+        targetCompatibility JavaVersion.VERSION_11
+    }
+    kotlinOptions {
+        jvmTarget = '11'
+    }
+}
+
+dependencies {
+    //network
+    api(libs.okhttp3.okhttp)
+    api(libs.okhttp3.okhttp.logging.interceptor)
+    api(libs.retrofit2.retrofit)
+    api(libs.retrofit2.converter.gson)
+    api(libs.retrofit2.adapter.rxjava3)
+    api(libs.gson.gson)
+    //mmkv
+    implementation(libs.tencent.mmkv)
+    //rxjava
+    api(libs.rxjava.rxandroid)
+    api(libs.rxjava.rxjava)
+    //rxbinding
+    api(libs.rxbinding4.rxbinding)
+    implementation libs.androidx.core.ktx
+    implementation libs.androidx.appcompat
+    implementation libs.material
+    testImplementation libs.junit
+    androidTestImplementation libs.androidx.junit
+    androidTestImplementation libs.androidx.espresso.core
+}

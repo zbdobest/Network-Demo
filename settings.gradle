@@ -1,0 +1,54 @@
+pluginManagement {
+    repositories {
+        maven {
+            url 'https://maven.aliyun.com/repository/google'
+        }
+
+        maven {
+            url 'https://maven.aliyun.com/repository/public'
+        }
+
+        maven {
+            url 'https://maven.aliyun.com/repository/jcenter'
+        }
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+def mavenUsername = System.getenv("MAVEN_CRED_USR")
+def mavenPassword = System.getenv("MAVEN_CRED_PSW")
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        maven {
+            url 'https://maven.aliyun.com/repository/google'
+        }
+
+        maven {
+            url 'https://maven.aliyun.com/repository/public'
+        }
+
+        maven {
+            url 'https://maven.aliyun.com/repository/jcenter'
+        }
+        maven {
+            allowInsecureProtocol true
+            url 'https://Jfrog.sgmw.com.cn/artifactory/android-maven-release/'
+            credentials {
+                username mavenUsername
+                password mavenPassword
+            }
+        }
+
+        google()
+        mavenCentral()
+    }
+}
+
+
+rootProject.name = "TestApp"
+apply from: "${rootProject.projectDir}/config.gradle"
+include ':app'
+enableFeaturePreview('VERSION_CATALOGS')
+include ':http'
