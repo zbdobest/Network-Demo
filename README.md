@@ -1,8 +1,10 @@
-Network-HTTP Library
+# Network-HTTP Library
+
 一个基于Kotlin开发的高扩展性、功能完善的HTTP网络库，集成了DSL简化调用、多类型拦截器、统一回调管理、通用错误处理、SSL安全校验和进度监控等功能。
 
-📁 项目结构详解
-text
+## 📁 项目结构详解
+
+```
 java/com/example/http/http/
 ├── callback/                 # 回调接口定义
 │   ├── DownloadCallback.kt   # 下载专用回调（含进度）
@@ -34,12 +36,15 @@ java/com/example/http/http/
 ├── ssl/
 │   └── SSLSocketFactoryManager.kt # SSL安全管理
 └── utils/                    # 工具类
-    ├── Logger.kt             # 日志工具
-    ├── NetworkUtils.kt       # 网络工具
-    └── NetworkManager.kt     # 网络状态管理
-🌟 核心设计理念
-1. 分层架构设计
-text
+│   ├── Logger.kt             # 日志工具
+│   └── NetworkUtils.kt       # 网络工具
+└── NetworkManager.kt     # 网络状态管理
+```
+
+## 🌟 核心设计理念
+
+### 1. 分层架构设计
+```
 ┌─────────────────────────┐
 │   DSL层 (简化调用)        │
 ├─────────────────────────┤
@@ -51,10 +56,14 @@ text
 ├─────────────────────────┤
 │   安全层 (SSL校验)        │
 └─────────────────────────┘
-🔧 核心特性详解
-1. 强大的拦截器系统
-通用头拦截器
-kotlin
+```
+
+## 🔧 核心特性详解
+
+### 1. 强大的拦截器系统
+
+#### 通用头拦截器
+```kotlin
 class CommonHeadersInterceptor : Interceptor {
     override fun intercept(chain: Interceptor.Chain): Response {
         val request = chain.request().newBuilder()
@@ -65,8 +74,10 @@ class CommonHeadersInterceptor : Interceptor {
         return chain.proceed(request)
     }
 }
-通用参数拦截器
-kotlin
+```
+
+#### 通用参数拦截器
+```kotlin
 class CommonParamsInterceptor : Interceptor {
     override fun intercept(chain: Interceptor.Chain): Response {
         val originalRequest = chain.request()
@@ -78,8 +89,10 @@ class CommonParamsInterceptor : Interceptor {
         return chain.proceed(newRequest)
     }
 }
-进度监控拦截器
-kotlin
+```
+
+#### 进度监控拦截器
+```kotlin
 class ProgressInterceptor(private val listener: ProgressListener) : Interceptor {
     override fun intercept(chain: Interceptor.Chain): Response {
         val originalResponse = chain.proceed(chain.request())
@@ -88,9 +101,12 @@ class ProgressInterceptor(private val listener: ProgressListener) : Interceptor 
             .build()
     }
 }
-2. 统一的回调管理
-通用网络回调
-kotlin
+```
+
+### 2. 统一的回调管理
+
+#### 通用网络回调
+```kotlin
 interface NetworkCallback<T> {
     fun onSuccess(result: HttpResult<T>)
     fun onFailure(error: Throwable)
@@ -102,8 +118,11 @@ interface DownloadCallback : NetworkCallback<File> {
     fun onDownloadStarted()
     fun onDownloadCompleted(file: File)
 }
-3. 完善的错误处理
-kotlin
+```
+
+### 3. 完善的错误处理
+
+```kotlin
 object ErrorCodeHandler {
     fun handleError(error: Throwable): String {
         return when (error) {
@@ -125,8 +144,11 @@ object ErrorCodeHandler {
         }
     }
 }
-4. SSL安全校验
-kotlin
+```
+
+### 4. SSL安全校验
+
+```kotlin
 class SSLSocketFactoryManager {
     companion object {
         fun createSSLSocketFactory(): SSLSocketFactory {
@@ -147,9 +169,12 @@ class SSLSocketFactoryManager {
         }
     }
 }
-5. DSL简化调用
-网络请求DSL
-kotlin
+```
+
+### 5. DSL简化调用
+
+#### 网络请求DSL
+```kotlin
 networkRequest {
     url = "https://api.example.com/users"
     method = Method.GET
@@ -171,8 +196,10 @@ networkRequest {
         // 更新进度
     }
 }
-文件上传DSL
-kotlin
+```
+
+#### 文件上传DSL
+```kotlin
 networkUpload {
     url = "https://api.example.com/upload"
     file = File("/path/to/file.jpg")
@@ -184,8 +211,10 @@ networkUpload {
         updateProgressBar(progress.percentage)
     }
 }
-文件下载DSL
-kotlin
+```
+
+#### 文件下载DSL
+```kotlin
 networkDownload {
     url = "https://example.com/large-file.zip"
     destination = File("/downloads/large-file.zip")
@@ -199,9 +228,13 @@ networkDownload {
         completeNotification(file)
     }
 }
-🚀 使用方法
-1. 初始化配置
-kotlin
+```
+
+## 🚀 使用方法
+
+### 1. 初始化配置
+
+```kotlin
 // 在Application中初始化
 class MyApp : Application() {
     override fun onCreate() {
@@ -218,8 +251,11 @@ class MyApp : Application() {
         }
     }
 }
-2. 基础数据请求
-kotlin
+```
+
+### 2. 基础数据请求
+
+```kotlin
 // 使用DSL方式
 networkRequest {
     url = "/user/profile"
@@ -254,8 +290,11 @@ HttpManager.execute(request, object : NetworkCallback<List<Post>> {
         // 进度更新
     }
 })
-3. 文件上传
-kotlin
+```
+
+### 3. 文件上传
+
+```kotlin
 networkUpload {
     url = "/upload/avatar"
     file = avatarFile
@@ -272,8 +311,11 @@ networkUpload {
         showToast("上传失败: ${error.message}")
     }
 }
-4. 文件下载
-kotkin
+```
+
+### 4. 文件下载
+
+```kotkin
 networkDownload {
     url = "https://example.com/large-video.mp4"
     destination = File(context.getExternalFilesDir(null), "video.mp4")
@@ -290,9 +332,12 @@ networkDownload {
         showDownloadError("下载失败")
     }
 }
-🛠 高级配置
-自定义拦截器
-kotlin
+```
+
+## 🛠 高级配置
+
+### 自定义拦截器
+```kotlin
 // 添加日志拦截器
 class LoggingInterceptor : Interceptor {
     override fun intercept(chain: Interceptor.Chain): Response {
@@ -308,8 +353,10 @@ class LoggingInterceptor : Interceptor {
 
 // 注册到配置中
 NetworkConfig.addInterceptor(LoggingInterceptor())
-自定义SSL证书校验
-kotlin
+```
+
+### 自定义SSL证书校验
+```kotlin
 // 实现自定义证书验证逻辑
 val customTrustManager = object : X509TrustManager {
     override fun checkServerTrusted(chain: Array<out X509Certificate>, authType: String) {
@@ -320,13 +367,14 @@ val customTrustManager = object : X509TrustManager {
     }
     // 其他方法实现...
 }
-📊 性能特性
-连接池管理: 内置HTTP连接池，减少连接建立开销
+```
 
-请求复用: 支持请求取消和复用
+## 📊 性能特性
 
-内存优化: 使用OkIO进行流处理，减少内存占用
+- **连接池管理**: 内置HTTP连接池，减少连接建立开销
+- **请求复用**: 支持请求取消和复用
+- **内存优化**: 使用OkIO进行流处理，减少内存占用
+- **进度监控**: 精确的上传下载进度反馈
+- **线程安全**: 所有公共方法都保证线程安全
 
-进度监控: 精确的上传下载进度反馈
-
-线程安全: 所有公共方法都保证线程安全
+这个网络库通过清晰的模块划分和丰富的功能扩展，为Android应用提供了强大而灵活的网络通信能力。
