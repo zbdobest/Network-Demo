@@ -58,323 +58,257 @@ java/com/example/http/http/
 └─────────────────────────┘
 ```
 
-## 🔧 核心特性详解
+## 🛡️ 核心组件封装
 
-### 1. 强大的拦截器系统
+### 1. 拦截器机制
 
-#### 通用头拦截器
+**设计思路**：通过责任链模式实现功能解耦
+
 ```kotlin
-class CommonHeadersInterceptor : Interceptor {
-    override fun intercept(chain: Interceptor.Chain): Response {
-        val request = chain.request().newBuilder()
-            .addHeader("User-Agent", "Network-HTTP/1.0")
-            .addHeader("Accept", "application/json")
-            .addHeader("Authorization", "Bearer $token")
-            .build()
-        return chain.proceed(request)
-    }
-}
-```
-
-#### 通用参数拦截器
-```kotlin
+// 公共参数拦截器
 class CommonParamsInterceptor : Interceptor {
     override fun intercept(chain: Interceptor.Chain): Response {
         val originalRequest = chain.request()
         val newUrl = originalRequest.url.newBuilder()
-            .addQueryParameter("device_id", getDeviceId())
-            .addQueryParameter("version", appVersion)
+            .addQueryParameter("version", "1.0")
+            .addQueryParameter("platform", "android")
             .build()
-        val newRequest = originalRequest.newBuilder().url(newUrl).build()
-        return chain.proceed(newRequest)
+        return chain.proceed(originalRequest.newBuilder().url(newUrl).build())
     }
 }
-```
 
-#### 进度监控拦截器
-```kotlin
-class ProgressInterceptor(private val listener: ProgressListener) : Interceptor {
+// 公共头拦截器  
+class CommonHeadersInterceptor : Interceptor {
     override fun intercept(chain: Interceptor.Chain): Response {
-        val originalResponse = chain.proceed(chain.request())
-        return originalResponse.newBuilder()
-            .body(ProgressResponseBody(originalResponse.body!!, listener))
+        val request = chain.request().newBuilder()
+            .addHeader("Authorization", "Bearer token")
+            .addHeader("User-Agent", "MyApp/1.0")
             .build()
+        return chain.proceed(request)
+    }
+}
+
+// 日志拦截器（Debug模式启用）
+if (isDebug) {
+    clientBuilder.addInterceptor(HttpLoggingInterceptor().apply {
+        level = HttpLoggingInterceptor.Level.BODY
+    })
+}
+```
+
+### 2. 回调系统
+
+**设计思路**：统一回调接口 + 线程安全处理
+
+```kotlin
+// 基础回调接口
+interface NetworkCallback<T> {
+    fun onSuccess(data: T)              // 成功回调
+    fun onError(code: Int, message: String)  // 业务错误
+    fun onException(throwable: Throwable)    // 网络异常
+}
+
+// 线程安全处理
+private fun executeOnMainThread(action: () -> Unit) {
+    if (Looper.myLooper() == Looper.getMainLooper()) {
+        action()
+    } else {
+        Handler(Looper.getMainLooper()).post(action)
     }
 }
 ```
 
-### 2. 统一的回调管理
+### 3. 通用错误处理
 
-#### 通用网络回调
-```kotlin
-interface NetworkCallback<T> {
-    fun onSuccess(result: HttpResult<T>)
-    fun onFailure(error: Throwable)
-    fun onProgress(progress: Progress) // 进度回调
-}
-
-// 下载专用回调
-interface DownloadCallback : NetworkCallback<File> {
-    fun onDownloadStarted()
-    fun onDownloadCompleted(file: File)
-}
-```
-
-### 3. 完善的错误处理
+**设计思路**：集中式错误码管理 + 统一转换
 
 ```kotlin
 object ErrorCodeHandler {
-    fun handleError(error: Throwable): String {
-        return when (error) {
-            is SocketTimeoutException -> "连接超时，请检查网络"
-            is ConnectException -> "网络连接失败"
-            is SSLHandshakeException -> "证书验证失败"
-            is HttpException -> handleHttpError(error.code())
-            else -> "网络请求失败: ${error.message}"
-        }
+    private val errorCodeMap = mutableMapOf<Int, String>().apply {
+        put(400, "请求参数错误")
+        put(401, "未授权，请重新登录")
+        put(404, "请求的资源不存在")
+        put(500, "服务器内部错误")
     }
     
-    private fun handleHttpError(code: Int): String {
-        return when (code) {
-            401 -> "未授权，请重新登录"
-            403 -> "访问被拒绝"
-            404 -> "请求的资源不存在"
-            500 -> "服务器内部错误"
-            else -> "HTTP错误: $code"
+    fun handleError(code: Int, message: String): String {
+        return errorCodeMap[code] ?: message
+    }
+    
+    // 统一错误处理
+    fun <T> handleResponse(response: BaseResponse<T>, callback: NetworkCallback<T>) {
+        if (response.code == 200) {
+            response.data?.let(callback::onSuccess)
+        } else {
+            val errorMsg = getErrorMessage(response.code)
+            callback.onError(response.code, errorMsg)
         }
     }
 }
 ```
 
-### 4. SSL安全校验
+### 4. SSL证书校验
+
+**设计思路**：支持自定义证书 + 默认系统信任
 
 ```kotlin
-class SSLSocketFactoryManager {
-    companion object {
-        fun createSSLSocketFactory(): SSLSocketFactory {
-            val trustManager = object : X509TrustManager {
-                override fun checkClientTrusted(chain: Array<out X509Certificate>?, authType: String?) {}
-                override fun checkServerTrusted(chain: Array<out X509Certificate>?, authType: String?) {
-                    // 这里可以实现证书锁定(Pinning)逻辑
-                    chain?.forEach { certificate ->
-                        // 验证证书指纹等
-                    }
-                }
-                override fun getAcceptedIssuers(): Array<X509Certificate> = arrayOf()
-            }
-            
-            val sslContext = SSLContext.getInstance("TLS")
-            sslContext.init(null, arrayOf(trustManager), SecureRandom())
-            return sslContext.socketFactory
-        }
-    }
-}
-```
-
-### 5. DSL简化调用
-
-#### 网络请求DSL
-```kotlin
-networkRequest {
-    url = "https://api.example.com/users"
-    method = Method.GET
-    headers {
-        "Authorization" to "Bearer token123"
-        "Content-Type" to "application/json"
-    }
-    params {
-        "page" to "1"
-        "limit" to "20"
-    }
-    onSuccess { result: HttpResult<User> ->
-        // 处理成功结果
-    }
-    onFailure { error ->
-        // 处理错误
-    }
-    onProgress { progress ->
-        // 更新进度
-    }
-}
-```
-
-#### 文件上传DSL
-```kotlin
-networkUpload {
-    url = "https://api.example.com/upload"
-    file = File("/path/to/file.jpg")
-    fileFieldName = "avatar"
-    onSuccess { result ->
-        println("上传成功: ${result.data}")
-    }
-    onProgress { progress ->
-        updateProgressBar(progress.percentage)
-    }
-}
-```
-
-#### 文件下载DSL
-```kotlin
-networkDownload {
-    url = "https://example.com/large-file.zip"
-    destination = File("/downloads/large-file.zip")
-    onDownloadStarted {
-        showDownloadNotification()
-    }
-    onProgress { progress ->
-        updateNotification(progress.percentage)
-    }
-    onDownloadCompleted { file ->
-        completeNotification(file)
-    }
-}
-```
-
-## 🚀 使用方法
-
-### 1. 初始化配置
-
-```kotlin
-// 在Application中初始化
-class MyApp : Application() {
-    override fun onCreate() {
-        super.onCreate()
-        
-        NetworkConfig.initialize {
-            baseUrl = "https://api.example.com"
-            connectTimeout = 30_000
-            readTimeout = 30_000
-            addInterceptor(CommonHeadersInterceptor())
-            addInterceptor(CommonParamsInterceptor())
-            sslSocketFactory = SSLSocketFactoryManager.createSSLSocketFactory()
-            debugMode = BuildConfig.DEBUG
-        }
-    }
-}
-```
-
-### 2. 基础数据请求
-
-```kotlin
-// 使用DSL方式
-networkRequest {
-    url = "/user/profile"
-    method = Method.GET
-    onSuccess { result: HttpResult<UserProfile> ->
-        // 处理用户资料
-        val user = result.data
-        updateUI(user)
-    }
-    onFailure { error ->
-        showToast(ErrorCodeHandler.handleError(error))
-    }
+// 自定义SSL配置
+fun initSSL(context: Context) {
+    val trustManager = createTrustManager(context)
+    val sslSocketFactory = createSSLSocketFactory(trustManager)
+    
+    NetworkConfig.create()
+        .sslSocketFactory(sslSocketFactory, trustManager)
 }
 
-// 使用传统方式
-val request = RequestBuilder()
-    .url("https://api.example.com/posts")
-    .method(Method.POST)
-    .body(createJsonBody(postData))
+// 默认使用系统证书
+val client = OkHttpClient.Builder()
+    .sslSocketFactory(platform.socketFactory, platform.trustManager)
     .build()
-
-HttpManager.execute(request, object : NetworkCallback<List<Post>> {
-    override fun onSuccess(result: HttpResult<List<Post>>) {
-        // 处理成功
-    }
-    
-    override fun onFailure(error: Throwable) {
-        // 处理错误
-    }
-    
-    override fun onProgress(progress: Progress) {
-        // 进度更新
-    }
-})
 ```
 
-### 3. 文件上传
+## 📱 使用方法
+
+### 基础数据请求
 
 ```kotlin
-networkUpload {
-    url = "/upload/avatar"
-    file = avatarFile
-    fileFieldName = "avatar_image"
-    addFormData("user_id", "12345")
-    onProgress { progress ->
-        binding.progressBar.progress = progress.percentage
-        binding.percentageText.text = "${progress.percentage}%"
+// 1. GET请求 - 查询用户信息
+NetworkManager.getWithLambda<UserInfo>("user/info",
+    onSuccess = { user -> 
+        // 处理用户数据
+        updateUI(user)
+    },
+    onError = { code, message ->
+        // 统一错误处理
+        showError(ErrorCodeHandler.handleError(code, message))
     }
-    onSuccess { result ->
-        showToast("头像上传成功")
+)
+
+// 2. POST请求 - 提交数据
+val userData = User(name = "John", age = 25)
+NetworkManager.postWithLambda<ApiResponse>("user/update", userData,
+    onSuccess = { response ->
+        showToast("更新成功")
     }
-    onFailure { error ->
-        showToast("上传失败: ${error.message}")
+)
+
+// 3. 链式调用配置
+NetworkManager
+    .withHeader("Authorization", "user_token")
+    .withParam("timestamp", System.currentTimeMillis())
+    .getWithLambda<ProductList>("products")
+```
+
+### 文件上传
+
+```kotlin
+// 单文件上传
+NetworkManager.uploadFileWithLambda(
+    url = "https://api.example.com/upload",
+    file = File("/sdcard/image.jpg"),
+    fileKey = "avatar",  // 表单字段名
+    params = mapOf("description" to "用户头像"),
+    onProgress = { progress ->
+        // 实时更新进度条
+        val percent = progress.progress
+        updateProgress(percent)
+    },
+    onSuccess = { fileUrl ->
+        // 上传成功，获取文件访问URL
+        showMessage("上传成功: $fileUrl")
     }
+)
+
+// 多文件上传（循环调用单文件上传）
+val files = listOf(File("1.jpg"), File("2.jpg"), File("3.jpg"))
+files.forEach { file ->
+    NetworkManager.uploadFileWithLambda("upload", file, "images")
 }
 ```
 
-### 4. 文件下载
+### 文件下载
 
-```kotkin
-networkDownload {
-    url = "https://example.com/large-video.mp4"
-    destination = File(context.getExternalFilesDir(null), "video.mp4")
-    onDownloadStarted {
-        showDownloadStarted("开始下载视频")
+```kotlin
+// 文件下载到指定目录
+NetworkManager.downloadFileWithLambda(
+    url = "https://example.com/file.pdf",
+    fileName = "document.pdf", 
+    directory = getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS),
+    onProgress = { progress ->
+        // 显示下载进度
+        val speed = NetworkUtils.calculateSpeed(progress.currentBytes, progress.elapsedTime)
+        showDownloadProgress(progress.progress, speed)
+    },
+    onSuccess = { file ->
+        // 下载完成，打开文件
+        openFile(file)
+    },
+    onError = { code, message ->
+        showError("下载失败: $message")
     }
-    onProgress { progress ->
-        updateDownloadProgress(progress.downloaded, progress.total)
-    }
-    onDownloadCompleted { file ->
-        openVideoFile(file)
-    }
-    onFailure { error ->
-        showDownloadError("下载失败")
-    }
-}
+)
 ```
 
-## 🛠 高级配置
+### 高级功能使用
 
-### 自定义拦截器
 ```kotlin
-// 添加日志拦截器
-class LoggingInterceptor : Interceptor {
+// 1. 自定义拦截器（添加签名验证）
+class SignatureInterceptor : Interceptor {
     override fun intercept(chain: Interceptor.Chain): Response {
-        val request = chain.request()
-        Logger.d("Request: ${request.url} ${request.headers}")
-        
-        val response = chain.proceed(request)
-        Logger.d("Response: ${response.code} ${response.message}")
-        
-        return response
+        val original = chain.request()
+        val signedRequest = original.newBuilder()
+            .addHeader("Signature", generateSignature(original))
+            .build()
+        return chain.proceed(signedRequest)
     }
 }
 
-// 注册到配置中
-NetworkConfig.addInterceptor(LoggingInterceptor())
+// 2. 自定义SSL证书（内嵌证书）
+val certInputStream = context.resources.openRawResource(R.raw.my_cert)
+val sslContext = SSLContext.getInstance("TLS")
+sslContext.init(null, createTrustManager(certInputStream), null)
+
+NetworkConfig.create()
+    .sslSocketFactory(sslContext.socketFactory, trustManager)
+
+// 3. 请求取消管理
+// 在Activity/Fragment销毁时取消请求
+override fun onDestroy() {
+    super.onDestroy()
+    NetworkManager.cancelAll()  // 取消所有请求
+}
 ```
 
-### 自定义SSL证书校验
+## 🔧 配置选项
+
+### 网络配置示例
 ```kotlin
-// 实现自定义证书验证逻辑
-val customTrustManager = object : X509TrustManager {
-    override fun checkServerTrusted(chain: Array<out X509Certificate>, authType: String) {
-        // 实现证书锁定或自定义验证逻辑
-        if (!isCertificateTrusted(chain[0])) {
-            throw SSLHandshakeException("证书验证失败")
-        }
-    }
-    // 其他方法实现...
-}
+val config = NetworkConfig.create()
+    .baseUrl("https://api.example.com/")          // 基础URL
+    .connectTimeout(15)                           // 连接超时(秒)
+    .readTimeout(20)                              // 读取超时(秒)
+    .writeTimeout(20)                             // 写入超时(秒)
+    .commonParams(mapOf(                          // 公共参数
+        "appVersion" to BuildConfig.VERSION_NAME,
+        "platform" to "android"
+    ))
+    .commonHeaders(mapOf(                         // 公共头
+        "Authorization" to "Bearer token",
+        "Content-Type" to "application/json"
+    ))
+    .addInterceptor(MyCustomInterceptor())        // 自定义拦截器
+    .debug(BuildConfig.DEBUG)                     // 调试模式
+
+NetworkManager.init(config)
 ```
 
-## 📊 性能特性
+## 🎯 设计优势
 
-- **连接池管理**: 内置HTTP连接池，减少连接建立开销
-- **请求复用**: 支持请求取消和复用
-- **内存优化**: 使用OkIO进行流处理，减少内存占用
-- **进度监控**: 精确的上传下载进度反馈
-- **线程安全**: 所有公共方法都保证线程安全
+1. **解耦设计**：各组件职责单一，易于维护和扩展
+2. **线程安全**：自动主线程回调，避免UI线程问题
+3. **类型安全**：泛型支持，编译时类型检查
+4. **灵活配置**：支持多种配置方式和自定义扩展
+5. **统一管理**：集中错误处理、日志记录和资源管理
+6. **性能优化**：连接池复用、缓存策略等内置优化
 
-这个网络库通过清晰的模块划分和丰富的功能扩展，为Android应用提供了强大而灵活的网络通信能力。
+这个框架提供了从简单请求到复杂文件传输的完整解决方案，具有良好的可扩展性和易用性。
